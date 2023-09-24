@@ -1,0 +1,220 @@
+---
+title: "AOL NO 1"
+author: "Eleanor Maritsa M"
+---
+
+```{r}
+library(tidyverse)
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(sf)
+```
+
+```{r}
+library(readr)
+covid_data <- read_csv("D:/SEMESTER 4/DM/AoL/US_counties_COVID19_health_weather_data.csv")
+head(covid_data)
+```
+
+```{r}
+library(readr)
+county_geometry <- read_csv("D:/SEMESTER 4/DM/AoL/us_county_geometry.csv")
+head(county_geometry)
+```
+
+```{r}
+library(readr)
+sociohealth_data <- read_csv("D:/SEMESTER 4/DM/AoL/us_county_sociohealth_data.csv")
+head(sociohealth_data)
+```
+
+```{r}
+# show total row from the dataset
+nrow(covid_data)
+
+# show total column from the dataset
+ncol(covid_data)
+```
+
+```{r}
+# show total row from the dataset
+nrow(county_geometry)
+
+# show total column from the dataset
+ncol(county_geometry)
+```
+
+```{r}
+# show total row from the dataset
+nrow(sociohealth_data)
+
+# show total column from the dataset
+ncol(sociohealth_data)
+```
+
+
+```{r}
+# Check the structure of the COVID-19 dataset
+glimpse(covid_data)
+print("=======================================================================================")
+
+# Check the structure of the county geometry dataset
+glimpse(county_geometry)
+print("=======================================================================================")
+
+# Check the structure of the sociohealth dataset
+glimpse(sociohealth_data)
+print("=======================================================================================")
+
+
+```
+
+```{r}
+# Merge the COVID-19 data with the county geometry data
+merged_data <- inner_join(covid_data, county_geometry, by = c("fips"))
+
+# Merge the merged data with the sociohealth data
+merged_data <- inner_join(merged_data, sociohealth_data, by = "fips")
+
+```
+
+
+```{r}
+# Check for missing values
+missing_values <- merged_data %>%
+  summarise_all(~ sum(is.na(.)))
+
+print(missing_values)
+```
+```{r}
+# Impute missing values with the mean for all columns
+merged_data <- merged_data %>%
+  mutate_all(function(x) ifelse(is.na(x), mean(x, na.rm = TRUE), x))
+```
+
+
+```{r}
+# Remove rows with missing values
+merged_data <- merged_data %>%
+  drop_na()
+```
+
+
+```{r}
+# Check the summary statistics
+summary(merged_data)
+```
+```{r}
+# show total row from the dataset
+nrow(merged_data)
+
+# show total column from the dataset
+ncol(merged_data)
+```
+
+
+```{r}
+# Convert necessary columns to appropriate data types
+merged_data$date <- as.Date(merged_data$date)
+merged_data$cases <- as.integer(merged_data$cases)
+
+```
+
+
+```{r}
+death_data <- merged_data %>%
+  group_by(state) %>%
+  summarize(total_deaths = sum(deaths))
+
+ggplot(death_data, aes(reorder(state, -total_deaths), total_deaths)) +
+  geom_bar(stat = "identity", fill = "pink") +
+  labs(x = "State", y = "Total deaths", title = "COVID-19 Death Rate by State") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+daily_cases_state <- merged_data %>%
+  group_by(state, date) %>%
+  summarise(total_cases = sum(cases))
+
+ggplot(daily_cases_state, aes(x = date, y = total_cases, color = state)) +
+  geom_line() +
+  labs(x = "Date", y = "Total Cases", title = "Daily COVID-19 Cases by state") +
+  theme(legend.position = "right")
+```
+
+```{r}
+# plot for 10 counties highest covid-19 cases
+top_counties <- merged_data %>%
+  group_by(county) %>%
+  summarise(total_cases = sum(cases)) %>%
+  arrange(desc(total_cases)) %>%
+  head(10)
+
+ggplot(top_counties, aes(x = reorder(county, total_cases), y = total_cases)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(x = "County", y = "Total Cases", title = "Top 10 Counties with the Highest Number of COVID-19 Cases") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+# plot for 10 counties highest covid-19 death
+top_death_rates <- merged_data %>%
+  group_by(county) %>%
+  summarise(death_rate = sum(deaths) / sum(cases) * 100) %>%
+  arrange(desc(death_rate)) %>%
+  head(10)
+
+ggplot(top_death_rates, aes(x = reorder(county, death_rate), y = death_rate)) +
+  geom_bar(stat = "identity", fill = "salmon") +
+  labs(x = "County", y = "Death Rate (%)", title = "Top 10 Counties with the Highest COVID-19 Death Rates") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+```{r}
+total_cases_state <- merged_data %>%
+  group_by(state) %>%
+  summarise(total_cases = sum(cases))
+
+ggplot(total_cases_state, aes(x = reorder(state, -total_cases), y = total_cases)) +
+  geom_bar(stat = "identity", fill = "purple") +
+  labs(x = "State", y = "Total Cases", title = "Total COVID-19 Cases by State") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+
+```{r}
+library(ggplot2)
+
+state_cases <- merged_data %>%
+  group_by(state) %>%
+  summarise(total_cases = sum(cases))
+
+ggplot(state_cases, aes(x = "", y = total_cases, fill = state)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  labs(fill = "State", x = "", y = "", title = "Proportion of COVID-19 Cases by State") +
+  theme_void() +
+  theme(legend.position = "right")
+```
+
+```{r}
+library(ggplot2)
+
+state_daily_cases <- merged_data %>%
+  group_by(state, date) %>%
+  summarise(total_cases = sum(cases))
+
+ggplot(state_daily_cases, aes(x = date, y = total_cases, fill = state)) +
+  geom_area() +
+  labs(x = "Date", y = "Total Cases", title = "COVID-19 Cases by State over Time") +
+  theme_bw() +
+  theme(legend.position = "right")
+
+```
+
+
+

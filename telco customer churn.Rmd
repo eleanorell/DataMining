@@ -1,0 +1,185 @@
+---
+title: "AOL NO 2"
+author: "Eleanor Maritsa M"
+---
+
+```{r}
+library(readr)
+library(ggplot2)
+library(ggcorrplot)
+library(stats)
+library(cowplot)
+library(recipes)
+library(themis)
+library(caret)
+library(plyr)
+library(pROC)
+```
+
+```{r}
+# import global environment
+telco <- read_csv("D:/SEMESTER 4/DM/AoL/WA_Fn-UseC_-Telco-Customer-Churn.csv")
+head(telco)
+```
+
+```{r}
+# show total row from the dataset
+nrow(telco)
+
+# show total column from the dataset
+ncol(telco)
+```
+```{r}
+sum(is.na(telco))
+```
+
+
+```{r}
+telco = na.omit(telco)
+cat(paste("Dataset after cleaning. Number of rows:", nrow(telco), "\n"))
+```
+```{r}
+pairs(telco[,c('tenure','MonthlyCharges','TotalCharges')])
+```
+
+```{r}
+# visualize in bar graph
+
+hist(telco$tenure)
+hist(telco$TotalCharges)
+hist(telco$MonthlyCharges)
+```
+```{r}
+ggplot(telco, aes(InternetService, fill = Churn)) + 
+  geom_bar() +
+  labs(title = "Customer Internet Service Status", 
+       x = "Customer internet service's type", 
+       y = "Count")
+```
+
+```{r}
+ggplot(telco, aes(PaymentMethod, fill = Churn)) + 
+  geom_bar() +
+  labs(title = "Payment Method", 
+       x = "Customer's Payment Method", 
+       y = "Count")
+```
+
+
+```{r}
+#show median monthly charges of customer
+ggplot(data = telco , aes(x = Churn , y = MonthlyCharges, fill = Churn)) + geom_bar(stat = "summary" , fun = "median")  +
+stat_summary(aes(label = paste(..y..)) , fun = median , geom = "text" , vjust = -0.5) + labs(ylab = "Median of MonthlyCharges") +
+ggtitle("Median monthly charges of customers") + theme_minimal() + theme(plot.title = element_text(hjust = 1.0))
+```
+
+```{r}
+ggplot(data = telco, aes(x = Churn,fill = gender)) + geom_bar(stat = "count",position = position_dodge()) + geom_text(stat = "count" , aes(label = paste("n = " , formatC(..count..))),vjust = -0.5 , position = position_dodge(0.9)) + ggtitle("Customers Churn by Gender") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+```{r}
+# test correlation between Churn and each categorical variables(except CustomerID)
+x_categorical <- subset(telco, select  = -c(tenure,MonthlyCharges,TotalCharges))
+chisq_test <- lapply(x_categorical[2:17] , function(x) chisq.test(x_categorical[,18] , x)$p.value)
+df_chisq_test = ldply(chisq_test,data.frame)
+names(df_chisq_test)[1] <- "Variable"
+names(df_chisq_test)[2] <- "P_value"
+ggplot(data = df_chisq_test , aes(y = Variable , x = P_value)) + geom_bar(stat = "identity" , fill = "purple") + geom_vline(xintercept = 0.05 ,color = 'pink') + ggtitle("P-Value of Chi-squared test") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5))
+```
+```{r}
+options(repr.plot.width =6, repr.plot.height = 4)
+telco_cor <- round(cor(telco[,c("tenure", "MonthlyCharges", "TotalCharges")]), 1)
+ggcorrplot(telco_cor,  title = "Correlation")+theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+```{r}
+# cleaning categorical features
+telco <- data.frame(lapply(telco, function(x) {
+                  gsub("No internet service", "No", x)}))
+
+telco <- data.frame(lapply(telco, function(x) {
+                  gsub("No phone service", "No", x)}))
+```
+
+```{r}
+# standardizing continuous 
+num_columns <- c("tenure", "MonthlyCharges", "TotalCharges")
+telco[num_columns] <- sapply(telco[num_columns], as.numeric)
+
+telco_int <- telco[,c("tenure", "MonthlyCharges", "TotalCharges")]
+telco_int <- data.frame(scale(telco_int))
+```
+
+```{r}
+# Create derived features
+telco <- mutate(telco, tenure_bin = tenure)
+
+telco$tenure_bin[telco$tenure_bin >=0 & telco$tenure_bin <= 12] <- '0-1 year'
+telco$tenure_bin[telco$tenure_bin > 12 & telco$tenure_bin <= 24] <- '1-2 years'
+telco$tenure_bin[telco$tenure_bin > 24 & telco$tenure_bin <= 36] <- '2-3 years'
+telco$tenure_bin[telco$tenure_bin > 36 & telco$tenure_bin <= 48] <- '3-4 years'
+telco$tenure_bin[telco$tenure_bin > 48 & telco$tenure_bin <= 60] <- '4-5 years'
+telco$tenure_bin[telco$tenure_bin > 60 & telco$tenure_bin <= 72] <- '5-6 years'
+
+telco$tenure_bin <- as.factor(telco$tenure_bin)
+```
+
+
+
+```{r}
+telco_dummy <- telco[,-c(1,6,19,20)]
+
+#Creating Dummy Variables
+dummy<- data.frame(sapply(telco_dummy,function(x) data.frame(model.matrix(~x-1,data =telco_dummy))[,-1]))
+
+head(dummy)
+```
+
+```{r}
+# Combining the data
+telco_final <- cbind(telco_int,dummy)
+head(telco_final)
+```
+
+
+```{r}
+#Splitting the data
+set.seed(123)
+indices = sample.split(telco_final$Churn, SplitRatio = 0.7)
+train = telco_final[indices,]
+validation = telco_final[!(indices),]
+
+```
+
+```{r}
+# random forest
+library(randomForest)
+set.seed(123)
+telco_final$Churn <- as.factor(telco_final$Churn)
+
+indices = sample.split(telco_final$Churn, SplitRatio = 0.7)
+train = telco_final[indices,]
+validation = telco_final[!(indices),]
+```
+```{r}
+#Training the RandomForest Model
+
+model.rf <- randomForest(Churn ~ ., data=train, proximity=FALSE,importance = FALSE,
+                        ntree=500,mtry=4, do.trace=FALSE)
+model.rf
+```
+```{r}
+#Predicting on the validation set and checking the Confusion Matrix.
+testPred <- predict(model.rf, newdata=validation[,-24])
+table(testPred, validation$Churn)
+
+confusionMatrix(validation$Churn, testPred)
+```
+
+```{r}
+# Check the variable Importance Plot
+varImpPlot(model.rf)
+```
+
